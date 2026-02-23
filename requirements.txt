@@ -1,3 +1,8 @@
-flask
+Flask
+gunicorn
+Pillow
+numpy
+moviepy
+imageio
+imageio-ffmpeg
 flask-cors
-serverless-wsgi
