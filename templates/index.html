@@ -270,7 +270,10 @@
                 const res = await fetch('/generate', { method: 'POST', body: formData });
                 const blob = await res.blob();
                 const url = URL.createObjectURL(blob);
-                preview.innerHTML = `<img src="${url}" class="max-h-[500px] rounded-2xl shadow-2xl">`;
+               preview.innerHTML = `
+  <img src="${url}" 
+       class="w-full h-full object-contain rounded-2xl shadow-2xl">
+`;
                 downloadBtn.href = url; downloadBtn.download = "studio_result.gif";
                 downloadBtn.classList.remove('hidden');
             } catch (err) { preview.innerHTML = `<p class="text-red-500">Error Processing</p>`; }
