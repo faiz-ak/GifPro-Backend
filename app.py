@@ -1,4 +1,5 @@
 from flask import Flask, request, send_file, render_template
+from flask_cors import CORS
 from PIL import Image, ImageDraw, ImageFont
 import os
 import json
@@ -13,6 +14,7 @@ from moviepy import VideoFileClip, concatenate_videoclips
 import moviepy.video.fx as vfx 
 
 app = Flask(__name__, template_folder="templates", static_folder="static")
+CORS(app)
 
 def add_text_to_image(img, text, color, size):
     """Helper to draw styled text on a PIL image."""
