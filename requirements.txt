@@ -5,4 +5,4 @@ numpy
 moviepy
 imageio
 imageio-ffmpeg
-flask-cors
+flask_cors
