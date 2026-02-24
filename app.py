@@ -108,7 +108,7 @@ def generate_gif():
 
             final_clip = concatenate_videoclips(clips, method="compose")
             output_path = os.path.join(session_dir, "output.gif")
-            final_clip.write_gif(output_path, fps=12, logger=None)
+            final_clip.write_gif(output_path, fps=6, logger=None)
 
             final_clip.close()
             for c in clips: c.close()
