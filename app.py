@@ -9,46 +9,47 @@ import tempfile
 import gc
 import numpy as np
 import logging
-
+ 
+# MoviePy 2.0+ Imports
+from moviepy import VideoFileClip, concatenate_videoclips
+import moviepy.video.fx as vfx
+ 
 app = Flask(__name__, template_folder="templates", static_folder="static")
-
-# --- ENHANCED LOGGER SETUP ---
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s [%(levelname)s] in %(module)s: %(message)s'
-)
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
-
 CORS(app, resources={
     r"/generate": {
         "origins": "https://giffyadm2.netlify.app"
     }
 })
 logger.info("Flask app initialized with CORS")
-
+ 
 def add_text_to_image(img, text, color, size):
     """Helper to draw styled text on a PIL image."""
     if not text:
         return img
     draw = ImageDraw.Draw(img)
     try:
+        # Tries to load a system font; falls back to default
         font = ImageFont.truetype("arial.ttf", int(size))
-    except Exception as e:
-        logger.debug(f"Could not load arial.ttf, using default font: {e}")
+    except:
         font = ImageFont.load_default()
-    
+   
     w, h = img.size
+    # Use textbbox for MoviePy/PIL 10.0+ compatibility
     bbox = draw.textbbox((0, 0), text, font=font)
     tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
-    
+   
+    # Draw simple drop shadow for readability
     draw.text(((w - tw) / 2 + 2, h - th - 38), text, font=font, fill="black")
+    # Draw main text
     draw.text(((w - tw) / 2, h - th - 40), text, font=font, fill=color)
     return img
-
+ 
 @app.route('/')
 def index():
     return render_template('index.html')
-
+ 
 @app.route('/generate', methods=['POST'])
 def generate_gif():
     mode = request.form.get('mode')
@@ -57,94 +58,88 @@ def generate_gif():
     text_color = request.form.get('text_color', '#ffffff')
     text_size = request.form.get('text_size', '40')
     uploaded_files = request.files.getlist('files')
-    
-    logger.info(f"START GENERATE: mode={mode}, files={len(uploaded_files)}, speed={speed_multiplier}")
-    
+   
+    logger.info(f"Received request - mode: {mode}, files: {len(uploaded_files)}, speed: {speed_multiplier}")
+   
     if not uploaded_files:
-        logger.error("No files found in the request payload.")
+        logger.warning("No files received in request")
         return "No files received", 400
-
+ 
     session_dir = tempfile.mkdtemp()
-    logger.info(f"Created session directory: {session_dir}")
-    
+   
     try:
         if mode == 'photo':
-            logger.info("Processing PHOTO mode")
+            logger.info("Processing photo mode")
             crops = json.loads(request.form.get('crops', '[]'))
             frames = []
             frame_delay = int(400 / speed_multiplier)
-
+ 
             for i, file in enumerate(uploaded_files):
-                logger.info(f"Processing photo {i}: {file.filename}")
                 img = Image.open(file).convert("RGB")
                 if i < len(crops):
                     c = crops[i]
                     img = img.crop((c['x'], c['y'], c['x'] + c['width'], c['y'] + c['height']))
-                
+               
                 if i == 0:
                     base_size = img.size
                 else:
                     img = img.resize(base_size, Image.Resampling.LANCZOS)
-                
+               
+                # Apply text overlay to photo frames
                 img = add_text_to_image(img, overlay_text, text_color, text_size)
                 frames.append(img)
-
+ 
             out = io.BytesIO()
             frames[0].save(out, format='GIF', save_all=True, append_images=frames[1:], duration=frame_delay, loop=0)
             out.seek(0)
-            logger.info("Photo GIF successfully generated in memory.")
+            logger.info("Photo GIF generated successfully")
             return send_file(out, mimetype='image/gif')
-
+ 
         elif mode in ['gif', 'video']:
-            logger.info(f"Processing {mode.upper()} mode")
-            from moviepy import VideoFileClip, concatenate_videoclips
-            import moviepy.video.fx as vfx
-
+            logger.info(f"Processing {mode} mode")
             clips = []
             for i, file in enumerate(uploaded_files):
                 ext = os.path.splitext(file.filename)[1] or ('.gif' if mode == 'gif' else '.mp4')
                 path = os.path.join(session_dir, f"input_{i}{ext}")
                 file.save(path)
-                logger.info(f"Saved file {i} to {path}")
-                
+               
                 clip = VideoFileClip(path)
                 if speed_multiplier != 1.0:
                     clip = clip.with_effects([vfx.MultiplySpeed(speed_multiplier)])
-                
+               
+                # Add text overlay to video frames
                 if overlay_text:
-                    logger.info(f"Applying text overlay to clip {i}")
+                    # clip.transform passes a function to modify every frame
                     clip = clip.transform(lambda get_frame, t:
                         np.array(add_text_to_image(Image.fromarray(get_frame(t)), overlay_text, text_color, text_size))
                     )
-                
+               
                 clips.append(clip)
-
+ 
             final_clip = concatenate_videoclips(clips, method="compose")
             output_path = os.path.join(session_dir, "output.gif")
-            
-            logger.info("Rendering final GIF (this may take a moment)...")
+            logger.info("Writing final GIF output")
             final_clip.write_gif(output_path, fps=6, logger=None)
-
+ 
             final_clip.close()
             for c in clips: c.close()
-
+ 
             with open(output_path, 'rb') as f:
                 return_data = io.BytesIO(f.read())
-            
+           
             gc.collect()
             return_data.seek(0)
-            logger.info("Video/GIF processing completed successfully.")
+            logger.info("Video/GIF processing completed successfully")
             return send_file(return_data, mimetype='image/gif', download_name='studio_result.gif')
-
+ 
     except Exception as e:
-        # exc_info=True prints the full stack trace to the console
-        logger.error(f"CRITICAL SERVER ERROR: {str(e)}", exc_info=True)
+        logger.error(f"Server Error: {e}", exc_info=True)
         return f"Server Error: {str(e)}", 500
     finally:
         shutil.rmtree(session_dir, ignore_errors=True)
-        logger.info(f"Cleaned up session directory: {session_dir}")
-
+ 
 if __name__ == "__main__":
+    import os
     port = int(os.environ.get("PORT", 10000))
     logger.info(f"Starting Flask app on port {port}")
     app.run(host="0.0.0.0", port=port)
